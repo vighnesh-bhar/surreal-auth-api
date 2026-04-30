@@ -1,0 +1,57 @@
+Project setup (backend + frontend)
+
+1) Backend setup
+- Open a terminal in `backend`.
+- Create and activate a virtual environment.
+- Install dependencies:
+  `pip install -r requirements.txt`
+
+2) Backend environment config
+- Copy `backend/.env.example` to `backend/.env`.
+- Fill in required values:
+  - `SURREAL_URL`
+  - `SURREAL_NAMESPACE`
+  - `SURREAL_DB`
+  - `SURREAL_USERNAME`
+  - `SURREAL_PASSWORD`
+  - `SECRET_KEY`
+  - `ALGORITHM`
+  - `ACCESS_TOKEN_EXPIRE_MINUTES`
+  - `REFRESH_TOKEN_EXPIRE_DAYS`
+- Optional but recommended:
+  - `APP_BASE_URL` (default `http://localhost:8001`)
+  - `FRONTEND_BASE_URL` (default `http://localhost:5173`)
+  - `EMAIL_VERIFICATION_TTL_SECONDS`
+  - `PASSWORD_RESET_TTL_SECONDS`
+  - SMTP settings (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `SMTP_USE_SSL`)
+
+Important `.env` format:
+- Use `KEY=value` (no spaces around `=`).
+- Do not wrap values in quotes unless needed by your shell tooling.
+
+3) Run backend API
+- From `backend`:
+  `uvicorn app.main:app --reload --port 8001`
+
+4) Backend API docs
+- Swagger UI: `http://localhost:8001/docs`
+- OpenAPI JSON: `http://localhost:8001/openapi.json`
+- Health: `http://localhost:8001/health`
+
+5) Frontend setup
+- Open another terminal in `frontend`.
+- Install dependencies:
+  `npm install`
+- Start frontend:
+  `npm run dev`
+- Frontend runs on `http://localhost:5173`.
+
+Notes on API paths
+- Frontend uses versioned auth routes:
+  - `http://localhost:8001/api/v1/auth/...`
+- Legacy auth routes are also mounted:
+  - `http://localhost:8001/auth/...`
+
+Testing
+- From `backend`:
+  `python -m pytest -q`

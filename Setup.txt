@@ -55,3 +55,11 @@ Notes on API paths
 Testing
 - From `backend`:
   `python -m pytest -q`
+
+6) Docker (single container: API + built frontend)
+- From the repo root (where `Dockerfile` lives):
+  `docker build -t surreal-auth-api .`
+  `docker run --rm -p 8000:8000 --env-file backend/.env surreal-auth-api`
+- Open `http://localhost:8000` for the UI; API docs at `http://localhost:8000/docs`.
+- Render (or similar): create a **Web Service**, point the build to this repo, use **Docker** runtime, set the same env vars as `backend/.env.example` (especially Surreal + `SECRET_KEY`). Set `FRONTEND_BASE_URL` to your public service URL so email links work. Render sets `PORT` automatically; the image uses it.
+- Optional: set `VITE_API_BASE` at **frontend build time** if you ever need a non-default API path (default is same-origin `/api/v1`).

@@ -3,9 +3,10 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import FileResponse
 
 from app.core.config import settings
 from app.db.surreal import connect_db, disconnect_db
@@ -98,3 +99,39 @@ app.include_router(coupons_router,       prefix=f"{P}/coupons",  tags=["Coupons"
 @app.get("/health", tags=["Health"])
 async def health():
     return {"status": "ok"}
+
+
+# ── SPA (production Docker): built frontend copied to static/frontend ───────
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "static" / "frontend"
+
+
+def _is_api_or_docs_path(path: str) -> bool:
+    p = (path or "").strip("/")
+    if not p:
+        return False
+    return (
+        p.startswith("api/")
+        or p.startswith("auth/")
+        or p.startswith("docs")
+        or p.startswith("redoc")
+        or p == "openapi.json"
+        or p.startswith("media/")
+        or p == "health"
+    )
+
+
+if (_FRONTEND_DIST / "index.html").is_file():
+
+    @app.get("/", include_in_schema=False)
+    async def spa_root():
+        return FileResponse(_FRONTEND_DIST / "index.html")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        """Serve Vite-built React app for non-API routes (same-origin deployment)."""
+        if _is_api_or_docs_path(full_path):
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidate = _FRONTEND_DIST / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_FRONTEND_DIST / "index.html")

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # ── URLs ────────────────────────────
     APP_BASE_URL: str = "http://localhost:8001"
     FRONTEND_BASE_URL: str = "http://localhost:5173"
+    PASSWORD_RESET_PATH: str = "/reset-password"
 
     # ── SurrealDB ───────────────────────
     SURREAL_URL: str

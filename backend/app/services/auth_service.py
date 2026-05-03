@@ -257,7 +257,7 @@ async def reset_pass_request(request, db: DB):
         f"This link expires at {expires_at.isoformat()} UTC."
     )
 
-    await send_email(normalized_email, subject, body)
+    send_email(normalized_email, subject, body)
 
     return {"success": True}
 

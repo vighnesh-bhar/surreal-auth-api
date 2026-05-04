@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import secrets
 
 from fastapi import HTTPException, status
+from fastapi import BackgroundTasks
 
 from app.db.surreal import DB
 from app.schemas.user import UserCreate, UserRegister
@@ -26,7 +27,7 @@ def hash_token(token: str) -> str:
 
 # ── Signup ──────────────────────────────
 
-async def create_user(user: UserCreate, db: DB):
+async def create_user(user: UserCreate, db: DB, background_tasks: BackgroundTasks):
     hashed = hash_password(user.password)
     now = datetime.utcnow().isoformat()
 
@@ -42,7 +43,7 @@ async def create_user(user: UserCreate, db: DB):
 
     user_id = created["id"]
 
-    await _create_and_send_email_verification(user.email, user_id, db)
+    await _create_and_send_email_verification(user.email, user_id, db, background_tasks)
 
     return created
 
@@ -98,7 +99,7 @@ async def register_user(payload: UserRegister, db: DB) -> dict:
     }
 
 
-async def _create_and_send_email_verification(email: str, user_id: str, db: DB):
+async def _create_and_send_email_verification(email: str, user_id: str, db: DB, background_tasks: BackgroundTasks):
     now = datetime.utcnow()
     expires_at = now + timedelta(seconds=settings.EMAIL_VERIFICATION_TTL_SECONDS)
     code = secrets.token_urlsafe(32)
@@ -112,11 +113,13 @@ async def _create_and_send_email_verification(email: str, user_id: str, db: DB):
 
     verify_url = f"{settings.APP_BASE_URL}/auth/verify-email?code={code}"
 
-    send_email(
-        email,
-        "Verify your email",
-        f"Click to verify:\n{verify_url}"
-    )
+    background_tasks.add_task(
+        send_email(
+            email,
+            "Verify your email",
+            f"Click to verify:\n{verify_url}")
+    )  
+    
 
 
 # ── Email Verification ─────────────────
@@ -276,7 +279,7 @@ async def logout_user(refresh_token: str, db: DB):
     return {"success": True}
 
 
-async def reset_pass_request(request, db: DB):
+async def reset_pass_request(request, db: DB, background_tasks: BackgroundTasks):
     normalized_email = request.email.strip().lower()
 
     users = await db.query(
@@ -322,7 +325,9 @@ async def reset_pass_request(request, db: DB):
         f"This link expires at {expires_at.isoformat()} UTC."
     )
 
-    send_email(normalized_email, subject, body)
+    background_tasks.add_task(
+        send_email(normalized_email, subject, body)
+    )
 
     return {"success": True}
 

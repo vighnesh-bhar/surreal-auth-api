@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from pydantic import BaseModel
 
 from app.core.auth import get_current_user
@@ -34,8 +34,8 @@ class LogoutRequest(BaseModel):
 
 
 @router.post("/signup")
-async def signup(user: UserCreate, db: DB = Depends(get_db)):
-    return await create_user(user, db)
+async def signup(user: UserCreate, background_tasks: BackgroundTasks, db: DB = Depends(get_db)):
+    return await create_user(user, db, background_tasks)
 
 
 @router.post("/login")
@@ -89,8 +89,8 @@ async def me(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/reset-password/request")
-async def reset_pass_request_endpoint(request: ResetPasswordRequest, db: DB = Depends(get_db)):
-    result = await reset_pass_request(request, db)
+async def reset_pass_request_endpoint(request: ResetPasswordRequest, background_tasks: BackgroundTasks, db: DB = Depends(get_db)):
+    result = await reset_pass_request(request, db, background_tasks)
     if not result.get("success"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -23,6 +23,7 @@ from app.schemas.user import (
     UserLogin,
 )
 from app.services.auth_service import (
+    create_user,
     logout_user,
     reset_pass,
     reset_pass_request,
@@ -37,27 +38,8 @@ class LogoutRequest(BaseModel):
 
 
 @router.post("/signup")
-async def signup(user: UserCreate, db: DB = Depends(get_db)):
-    # Legacy endpoint used by the frontend; create user record and return it.
-    now = datetime.now(timezone.utc).isoformat()
-    email = user.email.strip().lower()
-    existing = await db.query("SELECT id FROM user WHERE email = $email LIMIT 1", {"email": email})
-    if existing:
-        raise HTTPException(status_code=409, detail=ErrorMessages.EMAIL_ALREADY_REGISTERED.value)
-
-    return await db.create(
-        "user",
-        {
-            "name": user.name,
-            "email": email,
-            "password_hash": hash_password(user.password),
-            "role": "user",
-            "is_active": True,
-            "email_verified": False,
-            "created_at": now,
-            "updated_at": now,
-        },
-    )
+async def signup(user: UserCreate):
+    return await create_user(user)
 
 
 @router.post("/login")

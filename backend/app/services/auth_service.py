@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import secrets
 
 from fastapi import HTTPException, status
-from jose import JWTError
 
 from app.db.surreal import DB
+from app.schemas.user import UserCreate, UserRegister
 from app.core.config import settings
 from app.core.auth import (
     hash_password,
@@ -26,7 +26,7 @@ def hash_token(token: str) -> str:
 
 # ── Signup ──────────────────────────────
 
-async def create_user(user, db: DB):
+async def create_user(user: UserCreate, db: DB):
     hashed = hash_password(user.password)
     now = datetime.utcnow().isoformat()
 
@@ -45,6 +45,57 @@ async def create_user(user, db: DB):
     await _create_and_send_email_verification(user.email, user_id, db)
 
     return created
+
+
+async def register_user(payload: UserRegister, db: DB) -> dict:
+    """Create an active user and return JWT pair (with refresh session row)."""
+    now = datetime.now(timezone.utc).isoformat()
+    email = payload.email.strip().lower()
+
+    existing = await db.query(
+        "SELECT id FROM user WHERE email = $email LIMIT 1",
+        {"email": email},
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ErrorMessages.EMAIL_ALREADY_REGISTERED.value,
+        )
+
+    user = await db.create(
+        "user",
+        {
+            "email": email,
+            "password_hash": hash_password(payload.password),
+            "name": payload.name,
+            "role": payload.role,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+    )
+
+    user_id = str(user.get("id", ""))
+    refresh_token = create_refresh_token(user_id)
+    access_token = create_access_token(user_id)
+
+    await db.create(
+        "sessions",
+        {
+            "user_id": user_id,
+            "refresh_token_hash": hash_token(refresh_token),
+            "expires_at": (
+                datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            ).isoformat(),
+            "revoked": False,
+        },
+    )
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
 
 
 async def _create_and_send_email_verification(email: str, user_id: str, db: DB):
@@ -110,7 +161,7 @@ async def verify_email_code(code: str, db: DB):
 
 # ── Login ─────────────────────────────
 
-async def authenticate_user(email: str, password: str, db: DB):
+async def authenticate_user(email: str, password: str, db: DB) -> dict | None:
     users = await db.query(
         "SELECT * FROM user WHERE email = $email LIMIT 1",
         {"email": email.strip().lower()},
@@ -121,74 +172,88 @@ async def authenticate_user(email: str, password: str, db: DB):
 
     user = users[0]
 
-    if not verify_password(password, user["password"]):
+    if user.get("is_active") is False:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ErrorMessages.ACCOUNT_DISABLED.value,
+        )
+
+    pwd_hash = user.get("password") or user.get("password_hash") or ""
+    if not verify_password(password, pwd_hash):
         return None
 
-    user_id = user["id"]
+    user_id = str(user.get("id", ""))
 
     access_token = create_access_token(user_id)
     refresh_token = create_refresh_token(user_id)
 
-    await db.create("sessions", {
-        "user_id": user_id,
-        "refresh_token_hash": hash_token(refresh_token),
-        "expires_at": (datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)).isoformat(),
-        "revoked": False,
-    })
+    await db.create(
+        "sessions",
+        {
+            "user_id": user_id,
+            "refresh_token_hash": hash_token(refresh_token),
+            "expires_at": (
+                datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            ).isoformat(),
+            "revoked": False,
+        },
+    )
 
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
     }
 
 
 # ── Refresh (ROTATING TOKENS) ─────────
 
-async def refresh_access_token(refresh_token: str, db: DB):
+async def refresh_access_token(refresh_token: str, db: DB) -> dict | None:
     try:
         payload = decode_token(refresh_token)
+    except HTTPException:
+        return None
 
-        if payload["type"] != "refresh":
-            return None
+    if payload.get("type") != "refresh":
+        return None
 
-        user_id = payload["sub"]
-        hashed = hash_token(refresh_token)
+    user_id = str(payload.get("sub") or "")
+    hashed = hash_token(refresh_token)
 
-        sessions = await db.query(
-            "SELECT * FROM sessions WHERE refresh_token_hash = $hash LIMIT 1",
-            {"hash": hashed},
-        )
+    sessions = await db.query(
+        "SELECT * FROM sessions WHERE refresh_token_hash = $hash LIMIT 1",
+        {"hash": hashed},
+    )
 
-        if not sessions:
-            return None
+    if not sessions:
+        return None
 
-        session = sessions[0]
+    session = sessions[0]
 
-        if session.get("revoked"):
-            return None
+    if session.get("revoked"):
+        return None
 
-        # revoke old
-        await db.update("sessions", session["id"], {"revoked": True})
+    await db.update("sessions", session["id"], {"revoked": True})
 
-        # create new tokens
-        new_access = create_access_token(user_id)
-        new_refresh = create_refresh_token(user_id)
+    new_access = create_access_token(user_id)
+    new_refresh = create_refresh_token(user_id)
 
-        await db.create("sessions", {
+    await db.create(
+        "sessions",
+        {
             "user_id": user_id,
             "refresh_token_hash": hash_token(new_refresh),
-            "expires_at": (datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)).isoformat(),
+            "expires_at": (
+                datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            ).isoformat(),
             "revoked": False,
-        })
+        },
+    )
 
-        return {
-            "access_token": new_access,
-            "refresh_token": new_refresh,
-        }
-
-    except JWTError:
-        return None
+    return {
+        "access_token": new_access,
+        "refresh_token": new_refresh,
+    }
 
 
 # ── Logout ────────────────────────────

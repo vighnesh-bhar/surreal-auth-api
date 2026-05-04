@@ -108,12 +108,25 @@ def test_login_inactive_account_returns_403(client, mock_db):
 
 def test_refresh_token_success(client, mock_db):
     from app.core.auth import create_refresh_token
+    from app.services.auth_service import hash_token
+
     token = create_refresh_token("user1")
-    mock_db.select_one.return_value = {"id": "user1", "role": "user"}
+    mock_db.query.return_value = [
+        {
+            "id": "sess1",
+            "revoked": False,
+            "refresh_token_hash": hash_token(token),
+            "user_id": "user1",
+        }
+    ]
 
     resp = client.post("/api/v1/auth/refresh", json={"refresh_token": token})
     assert resp.status_code == 200
-    assert "access_token" in resp.json()
+    data = resp.json()
+    assert "access_token" in data
+    assert "refresh_token" in data
+    mock_db.update.assert_called()
+    assert mock_db.create.call_count >= 1
 
 
 def test_refresh_token_invalid_returns_401(client, mock_db):
@@ -132,7 +145,7 @@ def test_refresh_access_token_as_refresh_returns_401(client, mock_db):
 def test_refresh_user_not_found_returns_401(client, mock_db):
     from app.core.auth import create_refresh_token
     token = create_refresh_token("ghost")
-    mock_db.select_one.return_value = None
+    mock_db.query.return_value = []
 
     resp = client.post("/api/v1/auth/refresh", json={"refresh_token": token})
     assert resp.status_code == 401
@@ -146,4 +159,5 @@ def test_me_returns_user_without_password_hash(user_client, mock_db):
     assert resp.status_code == 200
     data = resp.json()
     assert "password_hash" not in data
+    assert "password" not in data
     assert data["email"] == REGULAR_USER["email"]

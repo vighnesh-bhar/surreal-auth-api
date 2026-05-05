@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api/v1"
 
     # ── URLs ────────────────────────────
-    APP_BASE_URL: str = "http://localhost:8001"
-    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    APP_BASE_URL: str 
+    FRONTEND_BASE_URL: str
     PASSWORD_RESET_PATH: str = "/reset-password"
 
     # ── SurrealDB ───────────────────────

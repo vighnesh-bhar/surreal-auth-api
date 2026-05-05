@@ -17,7 +17,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PORT=8000
+    PORT=8080
 
 # Optional: curl for Render health checks or debugging
 RUN apt-get update \
@@ -33,7 +33,7 @@ COPY backend/ .
 # Built SPA → served by FastAPI when static/frontend/index.html exists
 COPY --from=frontend-builder /src/frontend/dist ./static/frontend
 
-EXPOSE 8000
+EXPOSE 8080
 
 # Render and others inject PORT; default 8000 for local `docker run`.
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

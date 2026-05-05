@@ -36,4 +36,4 @@ COPY --from=frontend-builder /src/frontend/dist ./static/frontend
 EXPOSE 8000
 
 # Render and others inject PORT; default 8000 for local `docker run`.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
